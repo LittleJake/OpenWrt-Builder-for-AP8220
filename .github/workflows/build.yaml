@@ -19,6 +19,7 @@ env:
   NSS_PACKAGES_REPOSITORY_BRANCH: NSS-12.5-K6.x
   
   TZ: Asia/Shanghai
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   check_commits:
@@ -34,10 +35,14 @@ jobs:
         id: check_new_commits
         run: |
           # Get the latest commit sha from the remote repository
-          latest_commit_sha=$(curl -sL "https://api.github.com/repos/${{ env.REMOTE_REPOSITORY }}/commits?sha=${{ env.REMOTE_BRANCH }}&per_page=1" | jq -r '.[0].sha')
+          latest_commit_sha=$(curl -sL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ env.REMOTE_REPOSITORY }}/commits?sha=${{ env.REMOTE_BRANCH }}&per_page=1" | jq -r '.[0].sha')
     
           # Get the last built commit sha from the release body
-          last_built_commit_sha=$(curl -sL "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.body' | grep -oP 'Build Commit: \K\w+' || echo '')
+          last_built_commit_sha=$(curl -sL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.body' | grep -oP 'Build Commit: \K\w+' || echo '')
     
           # Print commit SHAs for debugging
           echo "Latest commit sha from remote repository: $latest_commit_sha"
@@ -57,10 +62,14 @@ jobs:
         id: check_nss_packages_repo_new_commits
         run: |
           # Get the latest commit sha from the NSS packages repository
-          latest_commit_sha=$(curl -sL "https://api.github.com/repos/${{ env.NSS_PACKAGES_REPOSITORY }}/commits?sha=${{ env.NSS_PACKAGES_REPOSITORY_BRANCH }}&per_page=1" | jq -r '.[0].sha')
+          latest_commit_sha=$(curl -sL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ env.NSS_PACKAGES_REPOSITORY }}/commits?sha=${{ env.NSS_PACKAGES_REPOSITORY_BRANCH }}&per_page=1" | jq -r '.[0].sha')
     
           # Get the last built commit sha from the release body
-          last_built_commit_sha=$(curl -sL "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.body' | grep -oP 'NSS Packages Commit: \K\w+' || echo '')
+          last_built_commit_sha=$(curl -sL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.body' | grep -oP 'NSS Packages Commit: \K\w+' || echo '')
     
           # Print commit SHAs for debugging
           echo "Latest commit sha from nss packages repository: $latest_commit_sha"
@@ -200,7 +209,7 @@ jobs:
             build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev file wget
-          sudo apt full-upgrade -y
+
           sudo apt-get clean
           sudo apt-get autoremove -y
             
@@ -322,24 +331,24 @@ jobs:
         run: tar xf ${{ env.SUBTARGET }}-images.tar
       
       - name: Get current date
-        run: echo "RELEASE_DATE=$(date +%F)" >> $GITHUB_ENV
+        run: echo "RELEASE_DATE=$(date +'%Y-%m-%d-%H-%M-%S')" >> $GITHUB_ENV
       
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*
-          tag_name: ${{ env.RELEASE_PREFIX }}-${{ env.DEVICE }}-${{ env.RELEASE_DATE }}
-          name: Updated prebuilt images ${{ env.RELEASE_DATE }}
+          tag_name: ${{ env.REMOTE_BRANCH }}-${{ env.RELEASE_DATE }}
+          name: Updated prebuilt images ${{ env.REMOTE_BRANCH }} ${{ env.RELEASE_DATE }}
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            Updated prebuilt images for ${{ env.DEVICE }}
+            Updated prebuilt images ${{ env.REMOTE_BRANCH }} ${{ env.RELEASE_DATE }}
             Build Commit: ${{ needs.check_commits.outputs.latest_commit_sha }}
             NSS Packages Commit: ${{ needs.check_commits.outputs.nss_packages_repo_latest_commit_sha }}
       
       - name: Clean up old releases
         uses: dev-drprasad/delete-older-releases@master
         with:
-          keep_latest: 2
+          keep_latest: 5
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
